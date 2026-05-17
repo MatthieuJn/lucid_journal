@@ -5,9 +5,9 @@ const SYNC_SECRET = process.env.SYNC_SECRET;
 
 export async function POST(req: NextRequest) {
   // Fail fast with a clear message if Supabase env vars are missing
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json(
-      { error: "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY on server" },
+      { error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY on server" },
       { status: 500 }
     );
   }
