@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase";
 import type { ActivityEvent } from "@/types/activity";
 
-// The Python script authenticates with this secret header
 const SYNC_SECRET = process.env.SYNC_SECRET;
 
 export async function POST(req: NextRequest) {
+  // Fail fast with a clear message if Supabase env vars are missing
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return NextResponse.json(
+      { error: "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY on server" },
+      { status: 500 }
+    );
+  }
+
   if (SYNC_SECRET) {
     const auth = req.headers.get("x-sync-secret");
     if (auth !== SYNC_SECRET) {
@@ -23,6 +29,8 @@ export async function POST(req: NextRequest) {
   if (!Array.isArray(events) || events.length === 0) {
     return NextResponse.json({ inserted: 0 });
   }
+
+  const { supabaseAdmin } = await import("@/lib/supabase");
 
   const rows = events.map((e) => ({
     source: e.source,
