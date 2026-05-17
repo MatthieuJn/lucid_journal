@@ -21,11 +21,14 @@ from pathlib import Path
 from typing import Any
 
 import requests
+import urllib3
 from dotenv import load_dotenv
 
-# Load from root .env.local (works whether you run from repo root or scripts/)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Load from root .env or .env.local
 _root = Path(__file__).parent.parent
-load_dotenv(_root / ".env.local")
+load_dotenv(_root / ".env")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -139,7 +142,7 @@ def push(events: list[dict]) -> int:
         headers["x-sync-secret"] = SYNC_SECRET
 
     url = f"{VERCEL_URL.rstrip('/')}/api/activity/sync"
-    r = requests.post(url, json=events, headers=headers, timeout=30)
+    r = requests.post(url, json=events, headers=headers, timeout=30, verify=False)
     r.raise_for_status()
     result = r.json()
     inserted = result.get("inserted", len(events))
