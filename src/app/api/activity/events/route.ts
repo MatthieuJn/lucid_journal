@@ -16,7 +16,8 @@ export async function GET(req: NextRequest) {
       .select("*")
       .gte("timestamp", start)
       .lte("timestamp", end)
-      .order("timestamp", { ascending: true }),
+      .order("timestamp", { ascending: true })
+      .limit(50000),
     supabase.from("app_categories").select("app, title, category"),
   ]);
 
