@@ -4,8 +4,12 @@ export type Category = "work" | "fun" | "communication" | "system";
 
 const BROWSERS = ["chrome", "firefox", "edge", "safari", "opera", "brave"];
 
+function normalizeApp(app: string): string {
+  return app.replace(/\.(exe|app|bin|lnk)$/i, "").trim();
+}
+
 function isBrowser(app: string) {
-  return BROWSERS.some((b) => app.toLowerCase().includes(b));
+  return BROWSERS.some((b) => normalizeApp(app).toLowerCase().includes(b));
 }
 
 function simplifyTitle(app: string, title: string | null): string {
@@ -63,7 +67,7 @@ export async function categorizeNewEvents(
   // Unique (app, title) pairs
   const unique = new Map<string, { app: string; title: string }>();
   for (const e of relevant) {
-    const app = e.app!;
+    const app = normalizeApp(e.app!);
     const title = simplifyTitle(app, e.title);
     const key = `${app}::${title}`;
     if (!unique.has(key)) unique.set(key, { app, title });

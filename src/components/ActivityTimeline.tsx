@@ -42,13 +42,17 @@ const APP_COLORS: Record<string, string> = {
   word: "#3B82F6",
 };
 
+// Strip .exe / .app suffixes for Windows apps
+function normalizeApp(app: string): string {
+  return app.replace(/\.(exe|app|bin|lnk)$/i, "").trim();
+}
+
 function getColor(app: string | null): string {
   if (!app) return "#6B7280";
-  const key = app.toLowerCase();
+  const key = normalizeApp(app).toLowerCase();
   for (const [name, color] of Object.entries(APP_COLORS)) {
     if (key.includes(name)) return color;
   }
-  // deterministic color from app name
   const hue = [...app].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360;
   return `hsl(${hue}, 60%, 55%)`;
 }
@@ -75,7 +79,8 @@ interface HourSlot {
 
 function buildSlots(events: ActivityEvent[]): HourSlot[] {
   const windowEvents = events.filter((e) => e.bucket_id.startsWith("aw-watcher-window") || e.bucket_id.startsWith("aw-watcher-android"));
-  const afkEvents = events.filter((e) => e.bucket_id.startsWith("aw-watcher-afk") && e.app === "not-afk");
+  // AFK watcher stores status in title ("not-afk" = user active)
+  const afkEvents = events.filter((e) => e.bucket_id.startsWith("aw-watcher-afk") && e.title === "not-afk");
 
   // Active seconds per hour from AFk watcher
   const activeByHour = new Map<number, number>();
@@ -89,11 +94,12 @@ function buildSlots(events: ActivityEvent[]): HourSlot[] {
   const hourMap = new Map<number, AppMap>();
   for (const e of windowEvents) {
     if (!e.app) continue;
+    const app = normalizeApp(e.app);
     const h = new Date(e.timestamp).getHours();
     if (!hourMap.has(h)) hourMap.set(h, new Map());
     const appMap = hourMap.get(h)!;
-    if (!appMap.has(e.app)) appMap.set(e.app, { seconds: 0, titles: new Map() });
-    const entry = appMap.get(e.app)!;
+    if (!appMap.has(app)) appMap.set(app, { seconds: 0, titles: new Map() });
+    const entry = appMap.get(app)!;
     entry.seconds += e.duration_seconds;
     if (e.title) entry.titles.set(e.title, (entry.titles.get(e.title) ?? 0) + 1);
   }
