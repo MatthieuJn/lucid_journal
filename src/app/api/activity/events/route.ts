@@ -8,16 +8,23 @@ export async function GET(req: NextRequest) {
   const start = `${date}T00:00:00Z`;
   const end = `${date}T23:59:59Z`;
 
-  const { data, error } = await getSupabaseAdmin()
-    .from("activity_events")
-    .select("*")
-    .gte("timestamp", start)
-    .lte("timestamp", end)
-    .order("timestamp", { ascending: true });
+  const supabase = getSupabaseAdmin();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  const [{ data: events, error }, { data: categories }] = await Promise.all([
+    supabase
+      .from("activity_events")
+      .select("*")
+      .gte("timestamp", start)
+      .lte("timestamp", end)
+      .order("timestamp", { ascending: true }),
+    supabase.from("app_categories").select("app, title, category"),
+  ]);
 
-  return NextResponse.json(data);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const categoryMap = Object.fromEntries(
+    (categories ?? []).map((c) => [`${c.app}::${c.title}`, c.category])
+  );
+
+  return NextResponse.json({ events: events ?? [], categories: categoryMap });
 }

@@ -3,6 +3,22 @@
 import { useEffect, useState } from "react";
 import type { ActivityEvent } from "@/types/activity";
 
+import type { Category } from "@/lib/categorize";
+
+const CATEGORY_COLORS: Record<string, string> = {
+  work: "#60A5FA",          // blue
+  fun: "#A78BFA",           // purple
+  communication: "#FB923C", // orange
+  system: "#4B5563",        // gray
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  work: "Travail",
+  fun: "Divertissement",
+  communication: "Communication",
+  system: "Système",
+};
+
 const APP_COLORS: Record<string, string> = {
   chrome: "#F59E0B",
   firefox: "#F97316",
@@ -102,6 +118,7 @@ function buildSlots(events: ActivityEvent[]): HourSlot[] {
 
 export function ActivityTimeline() {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [categoryMap, setCategoryMap] = useState<Record<string, string>>({});
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(true);
 
@@ -109,12 +126,32 @@ export function ActivityTimeline() {
     setLoading(true);
     fetch(`/api/activity/events?date=${date}`)
       .then((r) => r.json())
-      .then((data) => { setEvents(Array.isArray(data) ? data : []); setLoading(false); })
+      .then((data) => {
+        setEvents(Array.isArray(data.events) ? data.events : []);
+        setCategoryMap(data.categories ?? {});
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, [date]);
 
   const slots = buildSlots(events);
   const totalActive = slots.reduce((acc, s) => acc + s.activeSeconds, 0);
+
+  function getCategory(app: string, title: string | null): Category {
+    const simplified = app && ["chrome","firefox","edge","safari","opera","brave"].some(b => app.toLowerCase().includes(b))
+      ? (title ?? "").split(" - ")[0].trim().slice(0, 80)
+      : "";
+    return (categoryMap[`${app}::${simplified}`] as Category) ?? "system";
+  }
+
+  function dominantCategory(apps: AppSlice[]): Category {
+    const totals: Record<string, number> = { work: 0, fun: 0, communication: 0, system: 0 };
+    for (const a of apps) {
+      const cat = getCategory(a.app, a.topTitle);
+      totals[cat] += a.seconds;
+    }
+    return Object.entries(totals).sort((x, y) => y[1] - x[1])[0][0] as Category;
+  }
 
   return (
     <div>
@@ -126,11 +163,27 @@ export function ActivityTimeline() {
           onChange={(e) => setDate(e.target.value)}
           className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white"
         />
-        {!loading && events.length > 0 && (
-          <span className="text-gray-400 text-sm">
-            {formatDuration(totalActive)} actif · {events.length} events
-          </span>
-        )}
+        {!loading && slots.length > 0 && (() => {
+          const totals: Record<string, number> = { work: 0, fun: 0, communication: 0, system: 0 };
+          for (const slot of slots) {
+            for (const app of slot.apps) {
+              const cat = getCategory(app.app, app.topTitle);
+              totals[cat] += app.seconds;
+            }
+          }
+          const grand = Object.values(totals).reduce((a, b) => a + b, 0) || 1;
+          return (
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-gray-400 text-sm">{formatDuration(totalActive)} actif</span>
+              {(["work", "fun", "communication"] as Category[]).map((cat) => totals[cat] > 0 && (
+                <span key={cat} className="text-xs px-2 py-0.5 rounded-full font-medium"
+                  style={{ backgroundColor: CATEGORY_COLORS[cat] + "33", color: CATEGORY_COLORS[cat] }}>
+                  {CATEGORY_LABELS[cat]} {Math.round((totals[cat] / grand) * 100)}%
+                </span>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {loading ? (
@@ -147,7 +200,9 @@ export function ActivityTimeline() {
               </div>
 
               {/* Content */}
-              <div className="flex-1 bg-gray-900 rounded-lg px-3 py-2 border border-gray-800 group-hover:border-gray-700 transition-colors">
+              <div className="flex-1 bg-gray-900 rounded-lg px-3 py-2 border border-gray-800 group-hover:border-gray-700 transition-colors"
+                style={{ borderLeftColor: CATEGORY_COLORS[dominantCategory(apps)], borderLeftWidth: 3 }}
+              >
                 {/* Duration bar */}
                 {activeSeconds > 0 && (
                   <div className="flex gap-0.5 mb-2 h-1.5 rounded-full overflow-hidden bg-gray-800">

@@ -57,5 +57,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Fire-and-forget categorization — never blocks the sync response
+  if (process.env.GEMINI_API_KEY) {
+    const { categorizeNewEvents } = await import("@/lib/categorize");
+    categorizeNewEvents(rows).catch((e) => console.error("Categorize error:", e));
+  }
+
   return NextResponse.json({ inserted: count });
 }
