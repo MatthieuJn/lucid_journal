@@ -4,38 +4,37 @@ import { useEffect, useState } from "react";
 import type { ActivityEvent } from "@/types/activity";
 
 const APP_COLORS: Record<string, string> = {
-  // browsers
-  chrome: "bg-yellow-500",
-  firefox: "bg-orange-500",
-  edge: "bg-blue-500",
-  // dev
-  code: "bg-blue-400",
-  "windows terminal": "bg-green-600",
-  // communication
-  slack: "bg-purple-500",
-  teams: "bg-violet-500",
-  discord: "bg-indigo-500",
-  // android
-  android: "bg-green-400",
+  chrome: "#F59E0B",
+  firefox: "#F97316",
+  edge: "#3B82F6",
+  safari: "#06B6D4",
+  code: "#60A5FA",
+  "visual studio": "#60A5FA",
+  cursor: "#A78BFA",
+  windsurf: "#A78BFA",
+  terminal: "#34D399",
+  powershell: "#34D399",
+  cmd: "#34D399",
+  slack: "#A855F7",
+  teams: "#7C3AED",
+  discord: "#818CF8",
+  notion: "#E5E7EB",
+  obsidian: "#A78BFA",
+  spotify: "#22C55E",
+  figma: "#F472B6",
+  excel: "#22C55E",
+  word: "#3B82F6",
 };
 
 function getColor(app: string | null): string {
-  if (!app) return "bg-gray-600";
+  if (!app) return "#6B7280";
   const key = app.toLowerCase();
   for (const [name, color] of Object.entries(APP_COLORS)) {
     if (key.includes(name)) return color;
   }
-  return "bg-gray-500";
-}
-
-function groupByHour(events: ActivityEvent[]): Map<number, ActivityEvent[]> {
-  const map = new Map<number, ActivityEvent[]>();
-  for (const e of events) {
-    const hour = new Date(e.timestamp).getHours();
-    if (!map.has(hour)) map.set(hour, []);
-    map.get(hour)!.push(e);
-  }
-  return map;
+  // deterministic color from app name
+  const hue = [...app].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360;
+  return `hsl(${hue}, 60%, 55%)`;
 }
 
 function formatDuration(seconds: number): string {
@@ -43,6 +42,62 @@ function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   if (m < 60) return `${m}m`;
   return `${Math.floor(m / 60)}h${m % 60 > 0 ? `${m % 60}m` : ""}`;
+}
+
+interface AppSlice {
+  app: string;
+  seconds: number;
+  color: string;
+  topTitle: string | null;
+}
+
+interface HourSlot {
+  hour: number;
+  activeSeconds: number;
+  apps: AppSlice[];
+}
+
+function buildSlots(events: ActivityEvent[]): HourSlot[] {
+  const windowEvents = events.filter((e) => e.bucket_id.startsWith("aw-watcher-window") || e.bucket_id.startsWith("aw-watcher-android"));
+  const afkEvents = events.filter((e) => e.bucket_id.startsWith("aw-watcher-afk") && e.app === "not-afk");
+
+  // Active seconds per hour from AFk watcher
+  const activeByHour = new Map<number, number>();
+  for (const e of afkEvents) {
+    const h = new Date(e.timestamp).getHours();
+    activeByHour.set(h, (activeByHour.get(h) ?? 0) + e.duration_seconds);
+  }
+
+  // Aggregate window events by hour + app
+  type AppMap = Map<string, { seconds: number; titles: Map<string, number> }>;
+  const hourMap = new Map<number, AppMap>();
+  for (const e of windowEvents) {
+    if (!e.app) continue;
+    const h = new Date(e.timestamp).getHours();
+    if (!hourMap.has(h)) hourMap.set(h, new Map());
+    const appMap = hourMap.get(h)!;
+    if (!appMap.has(e.app)) appMap.set(e.app, { seconds: 0, titles: new Map() });
+    const entry = appMap.get(e.app)!;
+    entry.seconds += e.duration_seconds;
+    if (e.title) entry.titles.set(e.title, (entry.titles.get(e.title) ?? 0) + 1);
+  }
+
+  const slots: HourSlot[] = [];
+  for (const [hour, appMap] of hourMap) {
+    const apps: AppSlice[] = Array.from(appMap.entries())
+      .map(([app, { seconds, titles }]) => {
+        const topTitle = titles.size > 0
+          ? [...titles.entries()].sort((a, b) => b[1] - a[1])[0][0]
+          : null;
+        return { app, seconds, color: getColor(app), topTitle };
+      })
+      .sort((a, b) => b.seconds - a.seconds)
+      .slice(0, 6);
+
+    slots.push({ hour, activeSeconds: activeByHour.get(hour) ?? 0, apps });
+  }
+
+  return slots.sort((a, b) => a.hour - b.hour);
 }
 
 export function ActivityTimeline() {
@@ -54,18 +109,16 @@ export function ActivityTimeline() {
     setLoading(true);
     fetch(`/api/activity/events?date=${date}`)
       .then((r) => r.json())
-      .then((data) => {
-        setEvents(Array.isArray(data) ? data : []);
-        setLoading(false);
-      })
+      .then((data) => { setEvents(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => setLoading(false));
   }, [date]);
 
-  const byHour = groupByHour(events);
-  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const slots = buildSlots(events);
+  const totalActive = slots.reduce((acc, s) => acc + s.activeSeconds, 0);
 
   return (
     <div>
+      {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <input
           type="date"
@@ -73,63 +126,72 @@ export function ActivityTimeline() {
           onChange={(e) => setDate(e.target.value)}
           className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white"
         />
-        <span className="text-gray-400 text-sm">
-          {events.length} événements
-        </span>
+        {!loading && events.length > 0 && (
+          <span className="text-gray-400 text-sm">
+            {formatDuration(totalActive)} actif · {events.length} events
+          </span>
+        )}
       </div>
 
       {loading ? (
         <p className="text-gray-500 text-sm">Chargement...</p>
-      ) : events.length === 0 ? (
-        <p className="text-gray-500 text-sm">
-          Aucune activité pour ce jour. Lance le script Python pour synchroniser.
-        </p>
+      ) : slots.length === 0 ? (
+        <p className="text-gray-500 text-sm">Aucune activité pour ce jour.</p>
       ) : (
-        <div className="space-y-1">
-          {hours.map((hour) => {
-            const slotEvents = byHour.get(hour) ?? [];
-            if (slotEvents.length === 0) return null;
+        <div className="space-y-2">
+          {slots.map(({ hour, activeSeconds, apps }) => (
+            <div key={hour} className="flex gap-3 items-start group">
+              {/* Hour label */}
+              <div className="w-10 shrink-0 text-right pt-2">
+                <span className="text-gray-500 text-xs">{String(hour).padStart(2, "0")}h</span>
+              </div>
 
-            const totalSeconds = slotEvents.reduce(
-              (acc, e) => acc + e.duration_seconds,
-              0
-            );
+              {/* Content */}
+              <div className="flex-1 bg-gray-900 rounded-lg px-3 py-2 border border-gray-800 group-hover:border-gray-700 transition-colors">
+                {/* Duration bar */}
+                {activeSeconds > 0 && (
+                  <div className="flex gap-0.5 mb-2 h-1.5 rounded-full overflow-hidden bg-gray-800">
+                    {apps.map((a) => (
+                      <div
+                        key={a.app}
+                        style={{
+                          backgroundColor: a.color,
+                          width: `${Math.min(100, (a.seconds / activeSeconds) * 100)}%`,
+                        }}
+                        className="h-full rounded-full"
+                        title={`${a.app}: ${formatDuration(a.seconds)}`}
+                      />
+                    ))}
+                  </div>
+                )}
 
-            return (
-              <div key={hour} className="flex gap-3 items-start">
-                <span className="text-gray-500 text-xs w-10 pt-1 shrink-0 text-right">
-                  {String(hour).padStart(2, "0")}h
-                </span>
-                <div className="flex-1 space-y-0.5">
-                  {slotEvents.map((e, i) => (
+                {/* App pills */}
+                <div className="flex flex-wrap gap-1.5">
+                  {apps.map((a) => (
                     <div
-                      key={i}
-                      className={`flex items-center gap-2 px-2 py-1 rounded text-xs ${getColor(e.app)} bg-opacity-20 border border-current border-opacity-20`}
+                      key={a.app}
+                      className="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-gray-800"
+                      title={a.topTitle ?? a.app}
                     >
                       <span
-                        className={`w-1.5 h-1.5 rounded-full ${getColor(e.app)} shrink-0`}
+                        className="w-1.5 h-1.5 rounded-full shrink-0"
+                        style={{ backgroundColor: a.color }}
                       />
-                      <span className="font-medium text-white truncate flex-1">
-                        {e.app ?? "—"}
-                      </span>
-                      {e.title && (
-                        <span className="text-gray-400 truncate max-w-[40%]">
-                          {e.title}
-                        </span>
-                      )}
-                      <span className="text-gray-400 shrink-0 ml-auto">
-                        {e.source === "android" ? "📱" : "💻"}{" "}
-                        {formatDuration(e.duration_seconds)}
-                      </span>
+                      <span className="text-gray-200 font-medium">{a.app}</span>
+                      <span className="text-gray-500">{formatDuration(a.seconds)}</span>
                     </div>
                   ))}
-                  <div className="text-gray-600 text-xs pl-1">
-                    {formatDuration(totalSeconds)} total
-                  </div>
                 </div>
+
+                {/* Active time */}
+                {activeSeconds > 0 && (
+                  <p className="text-gray-600 text-xs mt-1.5">
+                    {formatDuration(activeSeconds)} actif
+                  </p>
+                )}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
     </div>

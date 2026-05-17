@@ -78,13 +78,21 @@ def get_buckets(host: str, patterns: list[str]) -> list[dict]:
 
 
 def get_events(host: str, bucket_id: str, since: datetime) -> list[dict]:
-    since_str = since.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    try:
-        events = aw_get(host, f"/buckets/{bucket_id}/events?limit=10000&start={since_str}")
-        return events
-    except Exception as e:
-        log.warning("Error fetching events from bucket %s: %s", bucket_id, e)
-        return []
+    all_events: list[dict] = []
+    chunk_hours = 2
+    now = datetime.now(timezone.utc)
+    cursor = since
+    while cursor < now:
+        end = min(cursor + timedelta(hours=chunk_hours), now)
+        start_str = cursor.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        end_str = end.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        try:
+            chunk = aw_get(host, f"/buckets/{bucket_id}/events?limit=2000&start={start_str}&end={end_str}", timeout=30)
+            all_events.extend(chunk)
+        except Exception as e:
+            log.warning("Error fetching events from bucket %s (%s→%s): %s", bucket_id, start_str, end_str, e)
+        cursor = end
+    return all_events
 
 
 def extract_app_title(event: dict, bucket_id: str) -> tuple[str | None, str | None]:
@@ -132,6 +140,8 @@ def collect(source: str, host: str, patterns: list[str], since: datetime) -> lis
 
 # ── Push to Vercel ─────────────────────────────────────────────────────────────
 
+BATCH_SIZE = 500
+
 def push(events: list[dict]) -> int:
     if not events:
         log.info("Nothing to push.")
@@ -142,12 +152,16 @@ def push(events: list[dict]) -> int:
         headers["x-sync-secret"] = SYNC_SECRET
 
     url = f"{VERCEL_URL.rstrip('/')}/api/activity/sync"
-    r = requests.post(url, json=events, headers=headers, timeout=30, verify=False)
-    r.raise_for_status()
-    result = r.json()
-    inserted = result.get("inserted", len(events))
-    log.info("Pushed %d events → API returned inserted=%s", len(events), inserted)
-    return inserted
+    total = 0
+    for i in range(0, len(events), BATCH_SIZE):
+        batch = events[i:i + BATCH_SIZE]
+        r = requests.post(url, json=batch, headers=headers, timeout=30, verify=False)
+        if not r.ok:
+            log.error("Batch %d/%d failed — %d: %s", i//BATCH_SIZE+1, -(-len(events)//BATCH_SIZE), r.status_code, r.text[:300])
+            r.raise_for_status()
+        total += r.json().get("inserted", len(batch))
+    log.info("Pushed %d events → inserted=%d", len(events), total)
+    return total
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
@@ -166,8 +180,16 @@ def main():
     else:
         log.info("ANDROID_AW_HOST not set — skipping Android sync")
 
-    log.info("Total events collected: %d", len(all_events))
-    push(all_events)
+    # Deduplicate by (source, bucket_id, event_id) — AW can return the same event twice
+    seen = set()
+    unique_events = []
+    for e in all_events:
+        key = (e["source"], e["bucket_id"], e["event_id"])
+        if key not in seen:
+            seen.add(key)
+            unique_events.append(e)
+    log.info("Total events: %d collected, %d unique", len(all_events), len(unique_events))
+    push(unique_events)
 
 
 if __name__ == "__main__":
