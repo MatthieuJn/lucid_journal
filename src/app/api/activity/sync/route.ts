@@ -30,7 +30,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ inserted: 0 });
   }
 
-  const { supabaseAdmin } = await import("@/lib/supabase");
+  const { getSupabaseAdmin } = await import("@/lib/supabase");
+  const supabaseAdmin = getSupabaseAdmin();
 
   const rows = events.map((e) => ({
     source: e.source,
