@@ -204,7 +204,7 @@ export function ActivityTimeline() {
           type="date"
           value={date}
           onChange={e => setDate(e.target.value)}
-          className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white"
+          className="bg-white border border-gray-300 rounded px-3 py-1.5 text-sm text-gray-900"
         />
         {blocks.length > 0 && (
           <span className="text-gray-500 text-xs">{blocks.length} sessions</span>
@@ -220,7 +220,7 @@ export function ActivityTimeline() {
             {hourMarkers.map(h => (
               <div
                 key={h}
-                className="absolute right-2 text-white text-sm font-semibold leading-none"
+                className="absolute right-2 text-gray-700 text-sm font-semibold leading-none"
                 style={{ top: (h - firstHour) * 60 * pxPerMin - 7 }}
               >
                 {String(h).padStart(2, "0")}h
@@ -238,7 +238,7 @@ export function ActivityTimeline() {
                 className="absolute left-0 right-0 pointer-events-none"
                 style={{
                   top: (h - firstHour) * 60 * pxPerMin,
-                  borderTop: "2px solid rgba(255,255,255,0.25)",
+                  borderTop: "2px solid rgba(0,0,0,0.12)",
                 }}
               />
             ))}
@@ -260,7 +260,7 @@ export function ActivityTimeline() {
                   title={`${block.app} · ${formatTime(block.startTime)} → ${formatTime(block.endTime)} (${formatDuration(block.durationSeconds)})`}
                 >
                   {heightPx >= 16 && (
-                    <span className="absolute inset-0 flex items-center px-2 text-xs text-gray-300 truncate">
+                    <span className="absolute inset-0 flex items-center px-2 text-xs text-gray-800 truncate">
                       <span className="font-medium mr-1.5">{block.app}</span>
                       {heightPx >= 24 && block.title && (
                         <span className="text-gray-500 truncate">
@@ -283,8 +283,7 @@ export function ActivityTimeline() {
                     className="absolute left-0 right-0 flex justify-center pointer-events-none"
                     style={{ top: topPx - 11 }}
                   >
-                    <span className="text-white text-xs font-medium leading-none px-1.5 py-0.5 rounded"
-                      style={{ background: "rgba(0,0,0,0.85)" }}>
+                    <span className="text-gray-600 text-xs font-medium leading-none px-1.5 py-0.5 rounded bg-gray-50 border border-gray-200">
                       {formatTime(block.startTime)}
                     </span>
                   </div>
