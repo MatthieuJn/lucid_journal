@@ -3,46 +3,23 @@
 import { useEffect, useState } from "react";
 import type { ActivityEvent } from "@/types/activity";
 
-import type { Category } from "@/lib/categorize";
+const PX_PER_MIN = 1.8;
+const GAP_LABEL_THRESHOLD_SEC = 120; // show time label if gap > 2 min
+const MERGE_GAP_SEC = 30;            // merge same-app events within 30s
+const MIN_DURATION_SEC = 4;          // ignore events < 4s
 
-const CATEGORY_COLORS: Record<string, string> = {
-  work: "#60A5FA",          // blue
-  fun: "#A78BFA",           // purple
-  communication: "#FB923C", // orange
-  system: "#4B5563",        // gray
-};
-
-const CATEGORY_LABELS: Record<string, string> = {
-  work: "Travail",
-  fun: "Divertissement",
-  communication: "Communication",
-  system: "Système",
-};
+const BROWSERS = ["chrome", "firefox", "edge", "safari", "opera", "brave"];
 
 const APP_COLORS: Record<string, string> = {
-  chrome: "#F59E0B",
-  firefox: "#F97316",
-  edge: "#3B82F6",
-  safari: "#06B6D4",
-  code: "#60A5FA",
-  "visual studio": "#60A5FA",
-  cursor: "#A78BFA",
-  windsurf: "#A78BFA",
-  terminal: "#34D399",
-  powershell: "#34D399",
-  cmd: "#34D399",
-  slack: "#A855F7",
-  teams: "#7C3AED",
-  discord: "#818CF8",
-  notion: "#E5E7EB",
-  obsidian: "#A78BFA",
-  spotify: "#22C55E",
-  figma: "#F472B6",
-  excel: "#22C55E",
-  word: "#3B82F6",
+  chrome: "#F59E0B", firefox: "#F97316", edge: "#3B82F6", safari: "#06B6D4",
+  code: "#60A5FA", "visual studio": "#60A5FA", cursor: "#A78BFA", windsurf: "#A78BFA",
+  terminal: "#34D399", powershell: "#34D399", cmd: "#34D399",
+  slack: "#A855F7", teams: "#7C3AED", discord: "#818CF8",
+  notion: "#E5E7EB", obsidian: "#A78BFA", spotify: "#22C55E",
+  figma: "#F472B6", excel: "#22C55E", word: "#3B82F6",
+  geforceNOW: "#76B900", steam: "#1B2838",
 };
 
-// Strip .exe / .app suffixes for Windows apps
 function normalizeApp(app: string): string {
   return app.replace(/\.(exe|app|bin|lnk)$/i, "").trim();
 }
@@ -54,205 +31,208 @@ function getColor(app: string | null): string {
     if (key.includes(name)) return color;
   }
   const hue = [...app].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360;
-  return `hsl(${hue}, 60%, 55%)`;
+  return `hsl(${hue}, 55%, 55%)`;
 }
 
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
+function formatTime(d: Date): string {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function formatDuration(s: number): string {
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
   if (m < 60) return `${m}m`;
   return `${Math.floor(m / 60)}h${m % 60 > 0 ? `${m % 60}m` : ""}`;
 }
 
-interface AppSlice {
+interface Block {
   app: string;
-  seconds: number;
+  title: string | null;
+  startTime: Date;
+  endTime: Date;
+  durationSeconds: number;
   color: string;
-  topTitle: string | null;
+  topPx: number;
+  heightPx: number;
+  showLabel: boolean;
 }
 
-interface HourSlot {
-  hour: number;
-  activeSeconds: number;
-  apps: AppSlice[];
-}
+function buildBlocks(events: ActivityEvent[]): Block[] {
+  const raw = events
+    .filter(e => (e.bucket_id.includes("window") || e.bucket_id.includes("android")) && e.app)
+    .filter(e => e.duration_seconds >= MIN_DURATION_SEC)
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    .map(e => {
+      const app = normalizeApp(e.app!);
+      const start = new Date(e.timestamp);
+      return {
+        app,
+        title: e.title,
+        startTime: start,
+        endTime: new Date(start.getTime() + e.duration_seconds * 1000),
+        durationSeconds: e.duration_seconds,
+        color: getColor(app),
+      };
+    });
 
-function buildSlots(events: ActivityEvent[]): HourSlot[] {
-  const windowEvents = events.filter((e) => e.bucket_id.startsWith("aw-watcher-window") || e.bucket_id.startsWith("aw-watcher-android"));
-  // AFK watcher stores status in title ("not-afk" = user active)
-  const afkEvents = events.filter((e) => e.bucket_id.startsWith("aw-watcher-afk") && e.title === "not-afk");
+  if (raw.length === 0) return [];
 
-  // Active seconds per hour from AFk watcher
-  const activeByHour = new Map<number, number>();
-  for (const e of afkEvents) {
-    const h = new Date(e.timestamp).getHours();
-    activeByHour.set(h, (activeByHour.get(h) ?? 0) + e.duration_seconds);
+  // Merge consecutive same-app events within MERGE_GAP_SEC
+  const merged = [{ ...raw[0] }];
+  for (let i = 1; i < raw.length; i++) {
+    const prev = merged[merged.length - 1];
+    const curr = raw[i];
+    const gapSec = (curr.startTime.getTime() - prev.endTime.getTime()) / 1000;
+    if (prev.app === curr.app && gapSec >= 0 && gapSec <= MERGE_GAP_SEC) {
+      prev.endTime = curr.endTime;
+      prev.durationSeconds = (prev.endTime.getTime() - prev.startTime.getTime()) / 1000;
+    } else {
+      merged.push({ ...curr });
+    }
   }
 
-  // Aggregate window events by hour + app
-  type AppMap = Map<string, { seconds: number; titles: Map<string, number> }>;
-  const hourMap = new Map<number, AppMap>();
-  for (const e of windowEvents) {
-    if (!e.app) continue;
-    const app = normalizeApp(e.app);
-    const h = new Date(e.timestamp).getHours();
-    if (!hourMap.has(h)) hourMap.set(h, new Map());
-    const appMap = hourMap.get(h)!;
-    if (!appMap.has(app)) appMap.set(app, { seconds: 0, titles: new Map() });
-    const entry = appMap.get(app)!;
-    entry.seconds += e.duration_seconds;
-    if (e.title) entry.titles.set(e.title, (entry.titles.get(e.title) ?? 0) + 1);
-  }
+  // Reference: midnight of that day
+  const midnight = new Date(merged[0].startTime);
+  midnight.setHours(0, 0, 0, 0);
 
-  const slots: HourSlot[] = [];
-  for (const [hour, appMap] of hourMap) {
-    const apps: AppSlice[] = Array.from(appMap.entries())
-      .map(([app, { seconds, titles }]) => {
-        const topTitle = titles.size > 0
-          ? [...titles.entries()].sort((a, b) => b[1] - a[1])[0][0]
-          : null;
-        return { app, seconds, color: getColor(app), topTitle };
-      })
-      .sort((a, b) => b.seconds - a.seconds)
-      .slice(0, 6);
+  return merged.map((b, i) => {
+    const topMin = (b.startTime.getTime() - midnight.getTime()) / 60000;
+    const durationMin = b.durationSeconds / 60;
+    const prevBlock = merged[i - 1];
+    const gapBefore = prevBlock
+      ? (b.startTime.getTime() - prevBlock.endTime.getTime()) / 1000
+      : GAP_LABEL_THRESHOLD_SEC + 1;
 
-    slots.push({ hour, activeSeconds: activeByHour.get(hour) ?? 0, apps });
-  }
-
-  return slots.sort((a, b) => a.hour - b.hour);
+    return {
+      ...b,
+      topPx: topMin * PX_PER_MIN,
+      heightPx: Math.max(3, durationMin * PX_PER_MIN),
+      showLabel: gapBefore >= GAP_LABEL_THRESHOLD_SEC,
+    };
+  });
 }
 
 export function ActivityTimeline() {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
-  const [categoryMap, setCategoryMap] = useState<Record<string, string>>({});
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
     fetch(`/api/activity/events?date=${date}`)
-      .then((r) => r.json())
-      .then((data) => {
+      .then(r => r.json())
+      .then(data => {
         setEvents(Array.isArray(data.events) ? data.events : []);
-        setCategoryMap(data.categories ?? {});
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, [date]);
 
-  const slots = buildSlots(events);
-  const totalActive = slots.reduce((acc, s) => acc + s.activeSeconds, 0);
+  const blocks = buildBlocks(events);
 
-  function getCategory(app: string, title: string | null): Category {
-    const simplified = app && ["chrome","firefox","edge","safari","opera","brave"].some(b => app.toLowerCase().includes(b))
-      ? (title ?? "").split(" - ")[0].trim().slice(0, 80)
-      : "";
-    return (categoryMap[`${app}::${simplified}`] as Category) ?? "system";
-  }
+  if (loading) return <p className="text-gray-500 text-sm mt-6">Chargement...</p>;
 
-  function dominantCategory(apps: AppSlice[]): Category {
-    const totals: Record<string, number> = { work: 0, fun: 0, communication: 0, system: 0 };
-    for (const a of apps) {
-      const cat = getCategory(a.app, a.topTitle);
-      totals[cat] += a.seconds;
-    }
-    return Object.entries(totals).sort((x, y) => y[1] - x[1])[0][0] as Category;
-  }
+  const firstHour = blocks.length > 0 ? Math.floor(blocks[0].topPx / PX_PER_MIN / 60) : 0;
+  const lastBlock = blocks[blocks.length - 1];
+  const lastHour = blocks.length > 0
+    ? Math.ceil((lastBlock.topPx + lastBlock.heightPx) / PX_PER_MIN / 60)
+    : 24;
+
+  const midnight = new Date(date + "T00:00:00");
+  const offsetPx = firstHour * 60 * PX_PER_MIN;
+  const containerHeight = (lastHour - firstHour) * 60 * PX_PER_MIN;
+  const hourMarkers = Array.from({ length: lastHour - firstHour + 1 }, (_, i) => firstHour + i);
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
+      {/* Date picker */}
+      <div className="flex items-center gap-3 mb-8">
         <input
           type="date"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={e => setDate(e.target.value)}
           className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white"
         />
-        {!loading && slots.length > 0 && (() => {
-          const totals: Record<string, number> = { work: 0, fun: 0, communication: 0, system: 0 };
-          for (const slot of slots) {
-            for (const app of slot.apps) {
-              const cat = getCategory(app.app, app.topTitle);
-              totals[cat] += app.seconds;
-            }
-          }
-          const grand = Object.values(totals).reduce((a, b) => a + b, 0) || 1;
-          return (
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-gray-400 text-sm">{formatDuration(totalActive)} actif</span>
-              {(["work", "fun", "communication"] as Category[]).map((cat) => totals[cat] > 0 && (
-                <span key={cat} className="text-xs px-2 py-0.5 rounded-full font-medium"
-                  style={{ backgroundColor: CATEGORY_COLORS[cat] + "33", color: CATEGORY_COLORS[cat] }}>
-                  {CATEGORY_LABELS[cat]} {Math.round((totals[cat] / grand) * 100)}%
-                </span>
-              ))}
-            </div>
-          );
-        })()}
+        {blocks.length > 0 && (
+          <span className="text-gray-500 text-xs">{blocks.length} sessions</span>
+        )}
       </div>
 
-      {loading ? (
-        <p className="text-gray-500 text-sm">Chargement...</p>
-      ) : slots.length === 0 ? (
+      {blocks.length === 0 ? (
         <p className="text-gray-500 text-sm">Aucune activité pour ce jour.</p>
       ) : (
-        <div className="space-y-2">
-          {slots.map(({ hour, activeSeconds, apps }) => (
-            <div key={hour} className="flex gap-3 items-start group">
-              {/* Hour label */}
-              <div className="w-10 shrink-0 text-right pt-2">
-                <span className="text-gray-500 text-xs">{String(hour).padStart(2, "0")}h</span>
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 bg-gray-900 rounded-lg px-3 py-2 border border-gray-800 group-hover:border-gray-700 transition-colors"
-                style={{ borderLeftColor: CATEGORY_COLORS[dominantCategory(apps)], borderLeftWidth: 3 }}
+        <div className="flex gap-0 select-none">
+          {/* Left: hour labels */}
+          <div className="relative w-12 shrink-0" style={{ height: containerHeight }}>
+            {hourMarkers.map(h => (
+              <div
+                key={h}
+                className="absolute right-2 text-gray-600 text-xs leading-none"
+                style={{ top: (h - firstHour) * 60 * PX_PER_MIN - 6 }}
               >
-                {/* Duration bar */}
-                {activeSeconds > 0 && (
-                  <div className="flex gap-0.5 mb-2 h-1.5 rounded-full overflow-hidden bg-gray-800">
-                    {apps.map((a) => (
-                      <div
-                        key={a.app}
-                        style={{
-                          backgroundColor: a.color,
-                          width: `${Math.min(100, (a.seconds / activeSeconds) * 100)}%`,
-                        }}
-                        className="h-full rounded-full"
-                        title={`${a.app}: ${formatDuration(a.seconds)}`}
-                      />
-                    ))}
+                {String(h).padStart(2, "0")}h
+              </div>
+            ))}
+          </div>
+
+          {/* Center: timeline */}
+          <div className="relative flex-1" style={{ height: containerHeight }}>
+
+            {/* Dotted hour lines */}
+            {hourMarkers.map(h => (
+              <div
+                key={h}
+                className="absolute left-0 right-0 pointer-events-none"
+                style={{
+                  top: (h - firstHour) * 60 * PX_PER_MIN,
+                  borderTop: "1px dashed #1F2937",
+                }}
+              />
+            ))}
+
+            {/* Activity blocks */}
+            {blocks.map((block, i) => (
+              <div key={i}>
+                {/* Time label at start if gap before */}
+                {block.showLabel && (
+                  <div
+                    className="absolute left-0 text-gray-500 text-xs leading-none pointer-events-none"
+                    style={{ top: block.topPx - offsetPx - 10 }}
+                  >
+                    {formatTime(block.startTime)}
                   </div>
                 )}
 
-                {/* App pills */}
-                <div className="flex flex-wrap gap-1.5">
-                  {apps.map((a) => (
-                    <div
-                      key={a.app}
-                      className="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-gray-800"
-                      title={a.topTitle ?? a.app}
-                    >
-                      <span
-                        className="w-1.5 h-1.5 rounded-full shrink-0"
-                        style={{ backgroundColor: a.color }}
-                      />
-                      <span className="text-gray-200 font-medium">{a.app}</span>
-                      <span className="text-gray-500">{formatDuration(a.seconds)}</span>
-                    </div>
-                  ))}
+                {/* Block */}
+                <div
+                  className="absolute left-6 right-2 rounded-sm overflow-hidden cursor-default group"
+                  style={{
+                    top: block.topPx - offsetPx,
+                    height: block.heightPx,
+                    backgroundColor: block.color + "28",
+                    borderLeft: `3px solid ${block.color}`,
+                  }}
+                  title={`${block.app} · ${formatTime(block.startTime)} → ${formatTime(block.endTime)} (${formatDuration(block.durationSeconds)})`}
+                >
+                  {block.heightPx >= 16 && (
+                    <span className="absolute inset-0 flex items-center px-2 text-xs text-gray-300 truncate">
+                      <span className="font-medium mr-1.5">{block.app}</span>
+                      {block.heightPx >= 24 && block.title && (
+                        <span className="text-gray-500 truncate">
+                          {block.title.split(" - ")[0]}
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </div>
 
-                {/* Active time */}
-                {activeSeconds > 0 && (
-                  <p className="text-gray-600 text-xs mt-1.5">
-                    {formatDuration(activeSeconds)} actif
-                  </p>
+                {/* End time label if next block has gap or this is last block */}
+                {block.showLabel && i < blocks.length - 1 && !blocks[i + 1].showLabel === false && (
+                  null
                 )}
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </div>
