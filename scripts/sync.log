@@ -1,0 +1,27 @@
+23:49:59 INFO Syncing events since 2026-05-16T21:49:59.057000+00:00 (last 24h)
+23:50:05 INFO [pc] Found 2 matching buckets on localhost:5600
+^C23:51:32 INFO Syncing events since 2026-05-16T21:51:32.426460+00:00 (last 24h)
+23:51:37 INFO [pc] Found 2 matching buckets on localhost:5600
+23:52:05 INFO [pc] aw-watcher-afk_LAPTOP-228NSJ6F \u2192 98 events
+23:52:32 INFO [pc] aw-watcher-window_LAPTOP-228NSJ6F \u2192 1735 events
+23:52:32 INFO ANDROID_AW_HOST not set — skipping Android sync
+23:52:32 INFO Total events: 1833 collected, 1802 unique
+23:52:37 INFO Pushed 1802 events \u2192 inserted=1802
+23:53:32 INFO Syncing events since 2026-05-16T21:53:32.233405+00:00 (last 24h)
+23:53:36 INFO [pc] Found 2 matching buckets on localhost:5600
+^C23:55:32 INFO Syncing events since 2026-05-16T21:55:32.014035+00:00 (last 24h)
+23:55:37 INFO [pc] Found 2 matching buckets on localhost:5600
+^C23:57:32 INFO Syncing events since 2026-05-16T21:57:32.358169+00:00 (last 24h)
+23:57:38 INFO [pc] Found 2 matching buckets on localhost:5600
+23:58:05 INFO [pc] aw-watcher-afk_LAPTOP-228NSJ6F \u2192 102 events
+23:58:32 INFO [pc] aw-watcher-window_LAPTOP-228NSJ6F \u2192 1733 events
+23:58:32 INFO ANDROID_AW_HOST not set — skipping Android sync
+23:58:32 INFO Total events: 1835 collected, 1802 unique
+23:58:36 INFO Pushed 1802 events \u2192 inserted=1802
+23:59:31 INFO Syncing events since 2026-05-16T21:59:31.729843+00:00 (last 24h)
+23:59:35 INFO [pc] Found 2 matching buckets on localhost:5600
+00:00:02 INFO [pc] aw-watcher-afk_LAPTOP-228NSJ6F \u2192 102 events
+00:00:29 INFO [pc] aw-watcher-window_LAPTOP-228NSJ6F \u2192 1738 events
+00:00:29 INFO ANDROID_AW_HOST not set — skipping Android sync
+00:00:29 INFO Total events: 1840 collected, 1805 unique
+00:00:33 INFO Pushed 1805 events \u2192 inserted=1805
