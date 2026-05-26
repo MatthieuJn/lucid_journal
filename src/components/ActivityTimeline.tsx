@@ -155,8 +155,7 @@ export function ActivityTimeline() {
   const [pxPerMin, setPxPerMin] = useState(DEFAULT_PX_PER_MIN);
   const containerRef = React.useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    setLoading(true);
+  const fetchEvents = () => {
     fetch(`/api/activity/events?date=${date}`)
       .then(r => r.json())
       .then(data => {
@@ -164,6 +163,13 @@ export function ActivityTimeline() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    fetchEvents();
+    const interval = setInterval(fetchEvents, 2 * 60 * 1000);
+    return () => clearInterval(interval);
   }, [date]);
 
   // Wheel zoom
@@ -200,12 +206,17 @@ export function ActivityTimeline() {
     <div>
       {/* Date picker */}
       <div className="flex items-center gap-3 mb-8">
-        <input
-          type="date"
-          value={date}
-          onChange={e => setDate(e.target.value)}
-          className="bg-white border border-gray-300 rounded px-3 py-1.5 text-sm text-gray-900"
-        />
+        <div className="relative">
+          <span className="bg-white border border-gray-300 rounded px-3 py-1.5 text-sm text-gray-900 cursor-pointer select-none">
+            {date.split("-").reverse().join("-")}
+          </span>
+          <input
+            type="date"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+            className="absolute inset-0 opacity-0 cursor-pointer w-full"
+          />
+        </div>
         {blocks.length > 0 && (
           <span className="text-gray-500 text-xs">{blocks.length} sessions</span>
         )}
