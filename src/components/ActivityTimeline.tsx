@@ -58,9 +58,32 @@ interface Block {
 }
 
 function buildBlocks(events: ActivityEvent[]): Block[] {
+  const afkRanges = events
+    .filter(e => e.bucket_id.includes("afk") && e.title === "afk")
+    .map(e => {
+      const s = new Date(e.timestamp).getTime();
+      return { s, e: s + e.duration_seconds * 1000 };
+    });
+
+  const isAfk = (startMs: number, endMs: number) => {
+    const dur = endMs - startMs;
+    if (dur === 0) return true;
+    let overlap = 0;
+    for (const r of afkRanges) {
+      const s = Math.max(startMs, r.s);
+      const e = Math.min(endMs, r.e);
+      if (s < e) overlap += e - s;
+    }
+    return overlap / dur > 0.5;
+  };
+
   const raw = events
     .filter(e => (e.bucket_id.includes("window") || e.bucket_id.includes("android")) && e.app)
     .filter(e => e.duration_seconds >= MIN_DURATION_SEC)
+    .filter(e => {
+      const s = new Date(e.timestamp).getTime();
+      return !isAfk(s, s + e.duration_seconds * 1000);
+    })
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
     .map(e => {
       const app = normalizeApp(e.app!);
@@ -202,7 +225,7 @@ export function ActivityTimeline() {
                 className="absolute left-0 right-0 pointer-events-none"
                 style={{
                   top: (h - firstHour) * 60 * pxPerMin,
-                  borderTop: "1px dashed #1F2937",
+                  borderTop: "2px solid rgba(255,255,255,0.25)",
                 }}
               />
             ))}
