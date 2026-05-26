@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import type { ActivityEvent } from "@/types/activity";
 
-const PX_PER_MIN = 1.8;
-const GAP_LABEL_THRESHOLD_SEC = 120; // show time label if gap > 2 min
-const MERGE_GAP_SEC = 30;            // merge same-app events within 30s
-const MIN_DURATION_SEC = 4;          // ignore events < 4s
-
-const BROWSERS = ["chrome", "firefox", "edge", "safari", "opera", "brave"];
+const DEFAULT_PX_PER_MIN = 1.8;
+const MIN_PX_PER_MIN = 0.5;
+const MAX_PX_PER_MIN = 12;
+const GAP_LABEL_THRESHOLD_SEC = 120;
+const MERGE_GAP_SEC = 30;
+const MIN_DURATION_SEC = 4;
 
 const APP_COLORS: Record<string, string> = {
   chrome: "#F59E0B", firefox: "#F97316", edge: "#3B82F6", safari: "#06B6D4",
@@ -52,8 +52,8 @@ interface Block {
   endTime: Date;
   durationSeconds: number;
   color: string;
-  topPx: number;
-  heightPx: number;
+  topMinutes: number;
+  durationMinutes: number;
   showLabel: boolean;
 }
 
@@ -105,8 +105,8 @@ function buildBlocks(events: ActivityEvent[]): Block[] {
 
     return {
       ...b,
-      topPx: topMin * PX_PER_MIN,
-      heightPx: Math.max(3, durationMin * PX_PER_MIN),
+      topMinutes: topMin,
+      durationMinutes: durationMin,
       showLabel: gapBefore >= GAP_LABEL_THRESHOLD_SEC,
     };
   });
@@ -116,6 +116,8 @@ export function ActivityTimeline() {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(true);
+  const [pxPerMin, setPxPerMin] = useState(DEFAULT_PX_PER_MIN);
+  const containerRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -128,19 +130,34 @@ export function ActivityTimeline() {
       .catch(() => setLoading(false));
   }, [date]);
 
+  // Wheel zoom
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return; // only zoom when Ctrl held
+      e.preventDefault();
+      setPxPerMin(prev => {
+        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+        return Math.min(MAX_PX_PER_MIN, Math.max(MIN_PX_PER_MIN, prev * factor));
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [loading]);
+
   const blocks = buildBlocks(events);
 
   if (loading) return <p className="text-gray-500 text-sm mt-6">Chargement...</p>;
 
-  const firstHour = blocks.length > 0 ? Math.floor(blocks[0].topPx / PX_PER_MIN / 60) : 0;
+  const firstHour = blocks.length > 0 ? Math.floor(blocks[0].topMinutes / 60) : 0;
   const lastBlock = blocks[blocks.length - 1];
   const lastHour = blocks.length > 0
-    ? Math.ceil((lastBlock.topPx + lastBlock.heightPx) / PX_PER_MIN / 60)
+    ? Math.ceil((lastBlock.topMinutes + lastBlock.durationMinutes) / 60)
     : 24;
 
-  const midnight = new Date(date + "T00:00:00");
-  const offsetPx = firstHour * 60 * PX_PER_MIN;
-  const containerHeight = (lastHour - firstHour) * 60 * PX_PER_MIN;
+  const offsetPx = firstHour * 60 * pxPerMin;
+  const containerHeight = Math.max(200, (lastHour - firstHour) * 60 * pxPerMin);
   const hourMarkers = Array.from({ length: lastHour - firstHour + 1 }, (_, i) => firstHour + i);
 
   return (
@@ -168,7 +185,7 @@ export function ActivityTimeline() {
               <div
                 key={h}
                 className="absolute right-2 text-gray-600 text-xs leading-none"
-                style={{ top: (h - firstHour) * 60 * PX_PER_MIN - 6 }}
+                style={{ top: (h - firstHour) * 60 * pxPerMin - 6 }}
               >
                 {String(h).padStart(2, "0")}h
               </div>
@@ -176,7 +193,7 @@ export function ActivityTimeline() {
           </div>
 
           {/* Center: timeline */}
-          <div className="relative flex-1" style={{ height: containerHeight }}>
+          <div ref={containerRef} className="relative flex-1" style={{ height: containerHeight }}>
 
             {/* Dotted hour lines */}
             {hourMarkers.map(h => (
@@ -184,54 +201,51 @@ export function ActivityTimeline() {
                 key={h}
                 className="absolute left-0 right-0 pointer-events-none"
                 style={{
-                  top: (h - firstHour) * 60 * PX_PER_MIN,
+                  top: (h - firstHour) * 60 * pxPerMin,
                   borderTop: "1px dashed #1F2937",
                 }}
               />
             ))}
 
             {/* Activity blocks */}
-            {blocks.map((block, i) => (
-              <div key={i}>
-                {/* Time label at start if gap before */}
-                {block.showLabel && (
-                  <div
-                    className="absolute left-0 text-gray-500 text-xs leading-none pointer-events-none"
-                    style={{ top: block.topPx - offsetPx - 10 }}
-                  >
-                    {formatTime(block.startTime)}
-                  </div>
-                )}
-
-                {/* Block */}
-                <div
-                  className="absolute left-6 right-2 rounded-sm overflow-hidden cursor-default group"
-                  style={{
-                    top: block.topPx - offsetPx,
-                    height: block.heightPx,
-                    backgroundColor: block.color + "28",
-                    borderLeft: `3px solid ${block.color}`,
-                  }}
-                  title={`${block.app} · ${formatTime(block.startTime)} → ${formatTime(block.endTime)} (${formatDuration(block.durationSeconds)})`}
-                >
-                  {block.heightPx >= 16 && (
-                    <span className="absolute inset-0 flex items-center px-2 text-xs text-gray-300 truncate">
-                      <span className="font-medium mr-1.5">{block.app}</span>
-                      {block.heightPx >= 24 && block.title && (
-                        <span className="text-gray-500 truncate">
-                          {block.title.split(" - ")[0]}
-                        </span>
-                      )}
-                    </span>
+            {blocks.map((block, i) => {
+              const topPx = block.topMinutes * pxPerMin - offsetPx;
+              const heightPx = Math.max(3, block.durationMinutes * pxPerMin);
+              return (
+                <div key={i}>
+                  {block.showLabel && (
+                    <div
+                      className="absolute left-0 text-gray-500 text-xs leading-none pointer-events-none"
+                      style={{ top: topPx - 10 }}
+                    >
+                      {formatTime(block.startTime)}
+                    </div>
                   )}
-                </div>
 
-                {/* End time label if next block has gap or this is last block */}
-                {block.showLabel && i < blocks.length - 1 && !blocks[i + 1].showLabel === false && (
-                  null
-                )}
-              </div>
-            ))}
+                  <div
+                    className="absolute left-6 right-2 rounded-sm overflow-hidden cursor-default"
+                    style={{
+                      top: topPx,
+                      height: heightPx,
+                      backgroundColor: block.color + "28",
+                      borderLeft: `3px solid ${block.color}`,
+                    }}
+                    title={`${block.app} · ${formatTime(block.startTime)} → ${formatTime(block.endTime)} (${formatDuration(block.durationSeconds)})`}
+                  >
+                    {heightPx >= 16 && (
+                      <span className="absolute inset-0 flex items-center px-2 text-xs text-gray-300 truncate">
+                        <span className="font-medium mr-1.5">{block.app}</span>
+                        {heightPx >= 24 && block.title && (
+                          <span className="text-gray-500 truncate">
+                            {block.title.split(" - ")[0]}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
