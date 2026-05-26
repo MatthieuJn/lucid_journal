@@ -212,51 +212,58 @@ export function ActivityTimeline() {
               const topPx = block.topMinutes * pxPerMin - offsetPx;
               const heightPx = Math.max(3, block.durationMinutes * pxPerMin);
               return (
-                <div key={i}>
+                <div
+                  key={i}
+                  className="absolute left-6 right-2 rounded-sm overflow-hidden cursor-default"
+                  style={{
+                    top: topPx,
+                    height: heightPx,
+                    backgroundColor: block.color + "28",
+                    borderLeft: `3px solid ${block.color}`,
+                  }}
+                  title={`${block.app} · ${formatTime(block.startTime)} → ${formatTime(block.endTime)} (${formatDuration(block.durationSeconds)})`}
+                >
+                  {heightPx >= 16 && (
+                    <span className="absolute inset-0 flex items-center px-2 text-xs text-gray-300 truncate">
+                      <span className="font-medium mr-1.5">{block.app}</span>
+                      {heightPx >= 24 && block.title && (
+                        <span className="text-gray-500 truncate">
+                          {block.title.split(" - ")[0]}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Time labels — rendered after blocks so they're always on top */}
+            {blocks.map((block, i) => {
+              const topPx = block.topMinutes * pxPerMin - offsetPx;
+              const heightPx = Math.max(3, block.durationMinutes * pxPerMin);
+              return (
+                <React.Fragment key={`t${i}`}>
                   <div
                     className="absolute left-0 right-0 flex justify-center pointer-events-none"
-                    style={{ top: topPx - 10, zIndex: 10 }}
+                    style={{ top: topPx - 11 }}
                   >
-                    <span className="text-gray-200 text-xs leading-none px-1.5 py-0.5 rounded"
-                      style={{ background: "rgba(10,10,20,0.75)" }}>
+                    <span className="text-white text-xs font-medium leading-none px-1.5 py-0.5 rounded"
+                      style={{ background: "rgba(0,0,0,0.85)" }}>
                       {formatTime(block.startTime)}
                     </span>
                   </div>
-
-                  <div
-                    className="absolute left-6 right-2 rounded-sm overflow-hidden cursor-default"
-                    style={{
-                      top: topPx,
-                      height: heightPx,
-                      backgroundColor: block.color + "28",
-                      borderLeft: `3px solid ${block.color}`,
-                    }}
-                    title={`${block.app} · ${formatTime(block.startTime)} → ${formatTime(block.endTime)} (${formatDuration(block.durationSeconds)})`}
-                  >
-                    {heightPx >= 16 && (
-                      <span className="absolute inset-0 flex items-center px-2 text-xs text-gray-300 truncate">
-                        <span className="font-medium mr-1.5">{block.app}</span>
-                        {heightPx >= 24 && block.title && (
-                          <span className="text-gray-500 truncate">
-                            {block.title.split(" - ")[0]}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </div>
-
                   {i === blocks.length - 1 && (
                     <div
                       className="absolute left-0 right-0 flex justify-center pointer-events-none"
-                      style={{ top: topPx + heightPx + 4, zIndex: 10 }}
+                      style={{ top: topPx + heightPx + 4 }}
                     >
-                      <span className="text-gray-200 text-xs leading-none px-1.5 py-0.5 rounded"
-                        style={{ background: "rgba(10,10,20,0.75)" }}>
+                      <span className="text-white text-xs font-medium leading-none px-1.5 py-0.5 rounded"
+                        style={{ background: "rgba(0,0,0,0.85)" }}>
                         {formatTime(block.endTime)}
                       </span>
                     </div>
                   )}
-                </div>
+                </React.Fragment>
               );
             })}
           </div>
