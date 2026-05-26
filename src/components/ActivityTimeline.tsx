@@ -180,12 +180,12 @@ export function ActivityTimeline() {
       ) : (
         <div className="flex gap-0 select-none">
           {/* Left: hour labels */}
-          <div className="relative w-12 shrink-0" style={{ height: containerHeight }}>
+          <div className="relative w-14 shrink-0" style={{ height: containerHeight }}>
             {hourMarkers.map(h => (
               <div
                 key={h}
-                className="absolute right-2 text-gray-600 text-xs leading-none"
-                style={{ top: (h - firstHour) * 60 * pxPerMin - 6 }}
+                className="absolute right-2 text-white text-sm font-semibold leading-none"
+                style={{ top: (h - firstHour) * 60 * pxPerMin - 7 }}
               >
                 {String(h).padStart(2, "0")}h
               </div>
@@ -215,8 +215,8 @@ export function ActivityTimeline() {
                 <div key={i}>
                   {block.showLabel && (
                     <div
-                      className="absolute left-0 text-gray-500 text-xs leading-none pointer-events-none"
-                      style={{ top: topPx - 10 }}
+                      className="absolute left-0 right-0 flex justify-center text-gray-400 text-xs leading-none pointer-events-none"
+                      style={{ top: topPx - 14 }}
                     >
                       {formatTime(block.startTime)}
                     </div>
