@@ -213,14 +213,15 @@ export function ActivityTimeline() {
               const heightPx = Math.max(3, block.durationMinutes * pxPerMin);
               return (
                 <div key={i}>
-                  {block.showLabel && (
-                    <div
-                      className="absolute left-0 right-0 flex justify-center text-gray-400 text-xs leading-none pointer-events-none"
-                      style={{ top: topPx - 14 }}
-                    >
+                  <div
+                    className="absolute left-0 right-0 flex justify-center pointer-events-none"
+                    style={{ top: topPx - 10, zIndex: 10 }}
+                  >
+                    <span className="text-gray-200 text-xs leading-none px-1.5 py-0.5 rounded"
+                      style={{ background: "rgba(10,10,20,0.75)" }}>
                       {formatTime(block.startTime)}
-                    </div>
-                  )}
+                    </span>
+                  </div>
 
                   <div
                     className="absolute left-6 right-2 rounded-sm overflow-hidden cursor-default"
@@ -243,6 +244,18 @@ export function ActivityTimeline() {
                       </span>
                     )}
                   </div>
+
+                  {i === blocks.length - 1 && (
+                    <div
+                      className="absolute left-0 right-0 flex justify-center pointer-events-none"
+                      style={{ top: topPx + heightPx + 4, zIndex: 10 }}
+                    >
+                      <span className="text-gray-200 text-xs leading-none px-1.5 py-0.5 rounded"
+                        style={{ background: "rgba(10,10,20,0.75)" }}>
+                        {formatTime(block.endTime)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })}
