@@ -57,6 +57,28 @@ interface Block {
   showLabel: boolean;
 }
 
+function subtractAfk(
+  startMs: number, endMs: number,
+  afkRanges: { s: number; e: number }[]
+): { s: number; e: number }[] {
+  let intervals = [{ s: startMs, e: endMs }];
+  for (const afk of afkRanges) {
+    const next: { s: number; e: number }[] = [];
+    for (const iv of intervals) {
+      const oStart = Math.max(iv.s, afk.s);
+      const oEnd = Math.min(iv.e, afk.e);
+      if (oStart >= oEnd) {
+        next.push(iv);
+      } else {
+        if (iv.s < oStart) next.push({ s: iv.s, e: oStart });
+        if (oEnd < iv.e) next.push({ s: oEnd, e: iv.e });
+      }
+    }
+    intervals = next;
+  }
+  return intervals;
+}
+
 function buildBlocks(events: ActivityEvent[]): Block[] {
   const afkRanges = events
     .filter(e => e.bucket_id.includes("afk") && e.title === "afk")
@@ -65,24 +87,15 @@ function buildBlocks(events: ActivityEvent[]): Block[] {
       return { s, e: s + e.duration_seconds * 1000 };
     });
 
-  const isAfk = (startMs: number, endMs: number) => {
-    const dur = endMs - startMs;
-    if (dur === 0) return true;
-    let overlap = 0;
-    for (const r of afkRanges) {
-      const s = Math.max(startMs, r.s);
-      const e = Math.min(endMs, r.e);
-      if (s < e) overlap += e - s;
-    }
-    return overlap / dur > 0.5;
-  };
-
   const raw = events
     .filter(e => (e.bucket_id.includes("window") || e.bucket_id.includes("android")) && e.app)
     .filter(e => e.duration_seconds >= MIN_DURATION_SEC)
-    .filter(e => {
-      const s = new Date(e.timestamp).getTime();
-      return !isAfk(s, s + e.duration_seconds * 1000);
+    .flatMap(e => {
+      const startMs = new Date(e.timestamp).getTime();
+      const endMs = startMs + e.duration_seconds * 1000;
+      return subtractAfk(startMs, endMs, afkRanges)
+        .filter(iv => (iv.e - iv.s) / 1000 >= MIN_DURATION_SEC)
+        .map(iv => ({ ...e, timestamp: new Date(iv.s).toISOString(), duration_seconds: (iv.e - iv.s) / 1000 }));
     })
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
     .map(e => {
